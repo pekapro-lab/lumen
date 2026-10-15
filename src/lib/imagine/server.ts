@@ -189,7 +189,9 @@ export const generateImage = createServerFn({ method: "POST" })
     const key = apiKey();
     if (!key) return { ok: false, error: "La IA no está disponible ahora." };
 
-    const apiResolution = data.quality === "fast" || data.resolution === "1080" ? "1k" : "2k";
+    // La calidad solo elige el modelo; la resolución se pide tal cual (4K = 2K de la API + ampliado
+    // x2 en el cliente, porque la API no pasa de 2K). Rápida/Alta nunca pisan la resolución.
+    const apiResolution = data.resolution === "1080" ? "1k" : "2k";
     const hasRef = Boolean(data.referenceDataUrl && data.referenceDataUrl.startsWith("data:"));
     const endpoint = hasRef ? `${XAI}/images/edits` : `${XAI}/images/generations`;
     const model = data.quality === "quality" ? "grok-imagine-image-2.0" : "grok-imagine-image";
@@ -266,16 +268,13 @@ export const startVideo = createServerFn({ method: "POST" })
     if (hasFirst) base.image = { url: data.referenceDataUrl };
     if (hasLast) base.last_frame = { url: data.lastFrameDataUrl };
 
-    const classicOk = !hasLast && data.duration <= 10 && resolution !== "1080p";
-    const cheapClip = classicOk && resolution === "480p" && data.duration <= 6;
-    const attempts: Array<{ model: string; extra: Record<string, unknown> }> = [];
-    if (cheapClip) {
-      attempts.push({ model: VIDEO_CLASSIC, extra: {} });
-      attempts.push({ model: VIDEO_V15, extra: { generate_audio: false } });
-    } else {
-      attempts.push({ model: VIDEO_V15, extra: { generate_audio: data.generateAudio } });
-      if (classicOk) attempts.push({ model: VIDEO_CLASSIC, extra: {} });
-    }
+    // El modelo 1.5 respeta duración, resolución y sonido tal cual. El clásico no tiene sonido, así
+    // que solo se usa como reserva cuando se pidió Silencio.
+    const classicOk = !hasLast && data.duration <= 10 && resolution !== "1080p" && !data.generateAudio;
+    const attempts: Array<{ model: string; extra: Record<string, unknown> }> = [
+      { model: VIDEO_V15, extra: { generate_audio: data.generateAudio } },
+    ];
+    if (classicOk) attempts.push({ model: VIDEO_CLASSIC, extra: {} });
 
     let lastError = "No se pudo iniciar el vídeo.";
     for (let i = 0; i < attempts.length; i++) {

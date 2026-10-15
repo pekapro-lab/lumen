@@ -1,14 +1,8 @@
-import type { VideoResolution } from "./types";
-
 export type VideoEngine = "lumen" | "midjourney";
 export type MjMotion = "low" | "high";
 
 export function mjVideoDuration(): 6 {
   return 6;
-}
-
-export function mjVideoResolution(resolution: VideoResolution): Exclude<VideoResolution, "1080p"> {
-  return resolution === "1080p" ? "720p" : resolution;
 }
 
 export function buildMjStillPrompt(prompt: string, raw: boolean): string {
