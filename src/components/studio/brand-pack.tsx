@@ -3,11 +3,10 @@ import { Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const FILES = [
-  { href: "/api/descarga?f=proyecto", name: "lumen.zip", label: "Proyecto Lumen" },
-  { href: "/api/descarga?f=zip", name: "lumen-marca.zip", label: "Marca en ZIP" },
-  { href: "/api/descarga?f=banner", name: "lumen-banner.jpg", label: "Banner de X" },
-  { href: "/api/descarga?f=logo", name: "lumen-logo.png", label: "Logo PNG" },
-  { href: "/api/descarga?f=svg", name: "lumen-logo.svg", label: "Logo SVG" },
+  { href: "/api/descarga?f=zip", name: "lumen-marca.zip", label: "Marca Lumen 4.0 (ZIP)" },
+  { href: "/api/descarga?f=banner", name: "lumen-banner.jpg", label: "Banner de X · Lumen 4.0" },
+  { href: "/api/descarga?f=logo", name: "lumen-logo.png", label: "Logo PNG · Lumen 4.0" },
+  { href: "/api/descarga?f=svg", name: "lumen-logo.svg", label: "Logo SVG · Lumen 4.0" },
   { href: "/api/descarga?f=preview", name: "lumen-preview.jpg", label: "Tarjeta de enlace" },
 ] as const;
 

@@ -1,6 +1,6 @@
 # Lumen
 
-Estudio de imagen y vídeo (Lumen 3.0 / 4.0).
+Estudio de imagen y vídeo por IA (Lumen 4.0): calidad, resolución, duración y sonido siempre seleccionables y enviados tal cual a la generación.
 
 ## Arranque
 
