@@ -11,11 +11,10 @@ import { PayChip, PayPanel } from "@/components/studio/pay-panel";
 import { ShotBoard } from "@/components/studio/shot-board";
 import { Stage } from "@/components/studio/stage";
 import { VideoPromptBoard } from "@/components/studio/video-prompts";
-import { BRAND } from "@/lib/brand";
 import { initGpu } from "@/lib/gl-blit";
 import { applyNeon, loadNeon, saveNeon, type NeonId } from "@/lib/neon";
 import { isPassActive, loadPass, passLabel, savePass, type StudioPass } from "@/lib/pay/pass";
-import { confirmCheckout, getPayStatus, type PayStatus } from "@/lib/pay/server";
+import { confirmCheckout, getPayStatus } from "@/lib/pay/server";
 import { useStudio } from "@/lib/studio-store";
 
 export function Studio() {
@@ -26,7 +25,6 @@ export function Studio() {
   const [neon, setNeon] = useState<NeonId>("amber");
   const [pass, setPass] = useState<StudioPass | null>(null);
   const [stripeReady, setStripeReady] = useState(false);
-  const [webhook, setWebhook] = useState<PayStatus["webhook"] | null>(null);
 
   useEffect(() => {
     initGpu();
@@ -35,10 +33,9 @@ export function Studio() {
     setNeon(next);
     applyNeon(next);
     setPass(loadPass());
-    void getPayStatus().then((status) => {
-      setStripeReady(status.ready);
-      setWebhook(status.webhook);
-    });
+    void getPayStatus()
+      .then((status) => setStripeReady(status.ready))
+      .catch(() => setStripeReady(false));
   }, [hydrate]);
 
   useEffect(() => {
@@ -96,14 +93,13 @@ export function Studio() {
                 <NeonTray value={neon} onChange={onNeon} />
                 <AiChip active={aiOpen} onClick={() => setAiOpen(true)} />
                 <BrandChip onClick={() => setBrandOpen(true)} />
-                <PayChip
-                  label={passLabel(pass)}
-                  active={active}
-                  onClick={() => setPayOpen(true)}
-                />
-                <span className="hud-chip hidden bg-elevated px-3 py-1.5 font-display text-[10px] font-semibold tracking-[0.16em] text-muted uppercase lg:inline">
-                  {BRAND.badge}
-                </span>
+                {stripeReady ? (
+                  <PayChip
+                    label={passLabel(pass)}
+                    active={active}
+                    onClick={() => setPayOpen(true)}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
@@ -133,7 +129,7 @@ export function Studio() {
       </div>
       <BrandPack open={brandOpen} onClose={() => setBrandOpen(false)} />
       <AiTools open={aiOpen} paywall={paywall} onNeedPay={() => setPayOpen(true)} onClose={() => setAiOpen(false)} />
-      <PayPanel open={payOpen} ready={stripeReady} webhook={webhook} onClose={() => setPayOpen(false)} />
+      <PayPanel open={payOpen && stripeReady} onClose={() => setPayOpen(false)} />
     </div>
   );
 }

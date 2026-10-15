@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, Copy, CreditCard, Loader2, X } from "lucide-react";
+import { CreditCard, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatPlanEur, PAY_PLANS, type PayPlanId } from "@/lib/pay/plans";
-import { startCheckout, type PayStatus } from "@/lib/pay/server";
+import { startCheckout } from "@/lib/pay/server";
 import { cn } from "@/lib/utils";
 
 export function PayChip({
@@ -30,22 +30,11 @@ export function PayChip({
   );
 }
 
-export function PayPanel({
-  open,
-  ready,
-  webhook,
-  onClose,
-}: {
-  open: boolean;
-  ready: boolean;
-  webhook: PayStatus["webhook"] | null;
-  onClose: () => void;
-}) {
+export function PayPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState<PayPlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -76,25 +65,6 @@ export function PayPanel({
     }
   }
 
-  async function copyWebhook() {
-    if (!webhook?.url) return;
-    try {
-      await navigator.clipboard.writeText(webhook.url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setError("No se pudo copiar la URL del webhook.");
-    }
-  }
-
-  const webhookState = !ready
-    ? "Stripe no está conectado."
-    : webhook?.listening
-      ? "Firmas verificadas. Los pagos se confirman al instante."
-      : webhook?.registered
-        ? "Endpoint registrado. Falta el secreto de firma."
-        : "Endpoint listo. Añádelo en Stripe → Webhooks.";
-
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center">
       <button
@@ -117,7 +87,7 @@ export function PayPanel({
                   Pases
                 </h2>
                 <p className="mt-1 text-sm text-muted">
-                  Pago único con Stripe. Sin tokens: el pase abre el estudio el tiempo contratado.
+                  Pago único con Stripe. El pase abre el estudio durante el tiempo contratado.
                 </p>
               </div>
               <button
@@ -163,30 +133,6 @@ export function PayPanel({
             </ul>
 
             {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
-
-            <div className="hud-chip mt-4 bg-elevated p-3">
-              <p className="font-display text-[10px] font-semibold tracking-[0.16em] text-muted uppercase">
-                Webhook Stripe
-              </p>
-              <p className="mt-1 text-xs text-subtle">{webhookState}</p>
-              {webhook?.url ? (
-                <button
-                  type="button"
-                  onClick={() => void copyWebhook()}
-                  className="mt-2 flex min-h-11 w-full items-center gap-2 text-left text-xs text-fg"
-                >
-                  {copied ? (
-                    <Check className="size-3.5 shrink-0 text-accent" />
-                  ) : (
-                    <Copy className="size-3.5 shrink-0 text-muted" />
-                  )}
-                  <span className="min-w-0 truncate tabular-nums">{webhook.url}</span>
-                </button>
-              ) : null}
-              {webhook?.events?.length ? (
-                <p className="mt-1 text-xs text-subtle">Pago, pago asíncrono, fallo y reembolso.</p>
-              ) : null}
-            </div>
 
             <div className="mt-4">
               <Button type="button" variant="secondary" onClick={onClose}>
