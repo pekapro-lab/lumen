@@ -1,12 +1,13 @@
-import { Aperture, Download, Play, Repeat2, Trash2, UnfoldHorizontal } from "lucide-react";
+import { Aperture, Download, Loader2, Play, Repeat2, Trash2, UnfoldHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CompareFrame } from "@/components/studio/compare-frame";
 import { LumenMark } from "@/components/studio/lumen-mark";
-import { downloadItem, playableSrc } from "@/lib/gallery";
-import { EXAMPLE_PROMPTS, resolutionLabel, secondsToAdd } from "@/lib/imagine/types";
+import { playableSrc } from "@/lib/gallery";
+import { EXAMPLE_PROMPTS, secondsToAdd } from "@/lib/imagine/types";
 import { featuredVideoPrompts } from "@/lib/imagine/video-prompts";
 import { useStudio } from "@/lib/studio-store";
+import { itemTakeLabel } from "@/lib/take";
 
 export function Stage() {
   const {
@@ -19,6 +20,8 @@ export function Stage() {
     suggestingShots,
     videoDuration,
     mode,
+    downloading,
+    download,
     setPrompt,
     animateCurrent,
     suggestShotBoard,
@@ -39,7 +42,7 @@ export function Stage() {
         <div className="relative z-10 flex max-h-full w-full max-w-4xl items-center justify-center">
           {current && !generating ? (
             <div
-              className="flex max-h-full max-w-full items-center justify-center"
+              className="relative flex max-h-full max-w-full items-center justify-center"
               style={{ aspectRatio: aspectRatio.replace(":", " / "), width: "min(100%, 920px)" }}
             >
               {current.kind === "video" ? (
@@ -47,6 +50,7 @@ export function Stage() {
                   key={current.id}
                   src={playableSrc(current.dataUrl)}
                   controls
+                  controlsList="nodownload"
                   playsInline
                   preload="metadata"
                   className="max-h-[min(52vh,560px)] w-full bg-bg object-contain"
@@ -67,6 +71,18 @@ export function Stage() {
                   className="max-h-[min(52vh,560px)] w-full bg-bg object-contain"
                 />
               )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="absolute top-2 right-2 z-20 bg-bg/80"
+                disabled={downloading}
+                aria-label={current.kind === "video" ? "Descargar vídeo" : "Descargar imagen"}
+                data-testid="download-player"
+                onClick={() => void download(current)}
+              >
+                {downloading ? <Loader2 className="animate-spin" /> : <Download />}
+                Descargar
+              </Button>
             </div>
           ) : generating ? (
             <GeneratingFrame label={statusText} progress={progress} />
@@ -85,10 +101,12 @@ export function Stage() {
       {current && !generating ? (
         <div className="flex flex-wrap items-center gap-2">
           <p className="mr-auto line-clamp-2 max-w-xl text-sm text-muted">{current.prompt}</p>
-          {resolutionLabel(current.resolution) ? (
-            <span className="hud-chip bg-elevated px-2.5 py-1 font-display text-[10px] font-semibold tabular-nums tracking-wider text-muted">
-              {current.duration ? `${current.duration}s · ` : ""}
-              {resolutionLabel(current.resolution)}
+          {itemTakeLabel(current) ? (
+            <span
+              className="hud-chip bg-elevated px-2.5 py-1 font-display text-[10px] font-semibold tabular-nums tracking-wider text-muted"
+              data-testid="take-label"
+            >
+              {itemTakeLabel(current)}
             </span>
           ) : null}
           <Button
@@ -130,8 +148,14 @@ export function Stage() {
               Animar
             </Button>
           ) : null}
-          <Button variant="secondary" size="sm" onClick={() => downloadItem(current)}>
-            <Download />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={downloading}
+            data-testid="download-toolbar"
+            onClick={() => void download(current)}
+          >
+            {downloading ? <Loader2 className="animate-spin" /> : <Download />}
             Descargar
           </Button>
           <Button
