@@ -35,7 +35,7 @@ export function Stage() {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-      <div className="relative flex min-h-[200px] flex-1 items-center justify-center overflow-hidden bg-elevated p-2 contain-paint md:min-h-[280px]">
+      <div className="home-well relative flex min-h-80 flex-1 items-center justify-center overflow-hidden p-3 contain-paint md:min-h-96">
         <div className="lumen-grain hidden lg:block" aria-hidden />
         <Viewfinder />
 
@@ -207,53 +207,74 @@ function EmptyState({
   onPick: (prompt: string) => void;
 }) {
   const video = mode === "video";
-  const examples = video ? featuredVideoPrompts() : EXAMPLE_PROMPTS.map((prompt) => ({ prompt }));
+  const imageStarters = [
+    { title: "Costa", prompt: EXAMPLE_PROMPTS[0] },
+    { title: "Retrato", prompt: EXAMPLE_PROMPTS[1] },
+    { title: "Bosque", prompt: EXAMPLE_PROMPTS[2] },
+    { title: "Noche", prompt: EXAMPLE_PROMPTS[3] },
+  ] as const;
+  const videoStarters = featuredVideoPrompts();
+
   return (
-    <div className="flex w-full flex-col items-center gap-5 px-3 py-6 text-center sm:px-6 sm:py-8">
-      <LumenMark className="size-12 hud-icon" />
-      <div className="max-w-md space-y-2">
-        <h2 className="font-display text-xl tracking-[0.08em] text-fg uppercase md:text-2xl">
+    <div className="flex w-full flex-col items-center gap-6 px-1 py-4 text-center sm:px-4 sm:py-8">
+      <LumenMark className="size-16" />
+      <div className="max-w-lg space-y-3">
+        <p className="font-display text-xs tracking-[0.22em] text-brand uppercase">Inicio</p>
+        <h2 className="font-display text-2xl leading-tight text-fg md:text-3xl">
           Lo que imagines, aparece.
         </h2>
-        <p className="text-sm leading-relaxed text-muted">
+        <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted">
           {video
-            ? "Elige un plano con movimiento, o escribe el tuyo."
-            : "Escribe un plano, o pide otras tomas: mismo sujeto, distinto encuadre."}
+            ? "Elige un plano con movimiento, o escribe el tuyo en el mando."
+            : "Elige una escena, o describe la tuya. Mismo sujeto, otro encuadre si pides otras tomas."}
         </p>
       </div>
-      <ul className="grid w-full max-w-lg grid-cols-2 gap-2">
-        {examples.map((example) => (
-          <li key={example.prompt}>
-            <button
-              type="button"
-              onClick={() => {
-                if ("id" in example) {
-                  useStudio.getState().applyVideoPrompt(example);
-                  return;
-                }
-                onPick(example.prompt);
-              }}
-              className="hud-chip h-full w-full bg-elevated px-3 py-3 text-left text-xs leading-relaxed text-muted transition-[color,box-shadow] duration-150 hover:text-fg hover:shadow-[var(--shadow-border-hover)]"
-            >
-              {"title" in example ? (
-                <>
-                  <span className="mb-1 block font-display tracking-[0.08em] text-fg uppercase">
-                    {example.title}
-                  </span>
-                  {example.prompt}
-                </>
-              ) : (
-                example.prompt
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="w-full max-w-xl text-left">
+        <p className="mb-2 px-1 font-display text-xs tracking-[0.16em] text-subtle uppercase">
+          {video ? "Planos para empezar" : "Escenas para empezar"}
+        </p>
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {video
+            ? videoStarters.map((example) => (
+                <li key={example.id}>
+                  <button
+                    type="button"
+                    onClick={() => useStudio.getState().applyVideoPrompt(example)}
+                    className="hud-chip flex h-full min-h-11 w-full flex-col items-start gap-1 bg-surface px-3 py-3 text-left transition-[color,box-shadow] duration-150 hover:text-fg hover:shadow-[var(--shadow-border-hover)]"
+                  >
+                    <span className="font-display text-xs tracking-[0.08em] text-fg uppercase">
+                      {example.title}
+                    </span>
+                    <span className="text-xs text-brand">{example.move}</span>
+                    <span className="line-clamp-2 text-xs leading-relaxed text-muted">
+                      {example.prompt}
+                    </span>
+                  </button>
+                </li>
+              ))
+            : imageStarters.map((example) => (
+                <li key={example.title}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(example.prompt)}
+                    className="hud-chip flex h-full min-h-11 w-full flex-col items-start gap-1 bg-surface px-3 py-3 text-left transition-[color,box-shadow] duration-150 hover:text-fg hover:shadow-[var(--shadow-border-hover)]"
+                  >
+                    <span className="font-display text-xs tracking-[0.08em] text-fg uppercase">
+                      {example.title}
+                    </span>
+                    <span className="line-clamp-3 text-xs leading-relaxed text-muted">
+                      {example.prompt}
+                    </span>
+                  </button>
+                </li>
+              ))}
+        </ul>
+      </div>
       {video ? (
         <button
           type="button"
           onClick={() => useStudio.setState({ atlasOpen: true, shots: [] })}
-          className="min-h-11 px-3 font-display text-[10px] tracking-[0.16em] text-muted uppercase transition-colors duration-150 hover:text-fg"
+          className="min-h-11 px-3 font-display text-xs tracking-[0.16em] text-muted uppercase transition-colors duration-150 hover:text-fg"
         >
           Ver más planos
         </button>

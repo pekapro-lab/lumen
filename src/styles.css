@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #7a2c0e;
-  --color-surface: #160805;
-  --color-elevated: #24100a;
+  --color-bg: #1a0c08;
+  --color-surface: #120806;
+  --color-elevated: #24140c;
   --color-fg: #ffe7d2;
   --color-muted: #d7a484;
   --color-subtle: #a06c52;
@@ -30,13 +30,13 @@
   --radius-xl: 2px;
   --radius-2xl: 2px;
 
-  --color-panel: rgb(22 8 5 / 0.92);
-  --sky-hi: #e27834;
-  --sky-mid: #a03c12;
-  --sky-low: #4a1608;
-  --sky-deep: #1c0804;
-  --sky-bloom: rgb(255 170 90 / 0.45);
-  --sky-vignette: rgb(20 4 0 / 0.55);
+  --color-panel: rgb(18 8 6 / 0.94);
+  --sky-hi: #6a3018;
+  --sky-mid: #3a160c;
+  --sky-low: #1c0c08;
+  --sky-deep: #0c0504;
+  --sky-bloom: rgb(255 140 60 / 0.28);
+  --sky-vignette: rgb(8 2 0 / 0.72);
   --neon-rgb: 255 122 40;
 
   --shadow-border: 0 0 0 1px rgb(var(--neon-rgb) / 0.45), 0 0 10px rgb(var(--neon-rgb) / 0.28);
@@ -337,6 +337,12 @@ html[data-neon="ice"] {
 
 .lumen-grain {
   display: none;
+}
+
+.home-well {
+  background:
+    radial-gradient(72% 58% at 50% 0%, rgb(var(--neon-rgb) / 0.16), transparent 64%),
+    linear-gradient(180deg, var(--color-elevated), var(--color-surface));
 }
 
 .gallery-thumb {

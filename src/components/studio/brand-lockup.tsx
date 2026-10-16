@@ -15,7 +15,7 @@ export function BrandLockup({ className }: { className?: string }) {
         <p className="font-display text-lg leading-none tracking-[0.12em] text-fg uppercase md:text-xl">
           {BRAND.product} <span className="inline-block text-brand">{BRAND.version}</span>
         </p>
-        <p className="mt-1 font-display text-[10px] leading-none tracking-[0.18em] text-muted uppercase">
+        <p className="mt-1 font-display text-xs leading-none tracking-[0.18em] text-muted uppercase">
           {BRAND.credit}
         </p>
       </div>

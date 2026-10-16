@@ -87,19 +87,21 @@ export function Studio() {
       <div className="relative z-10 mx-auto flex min-h-dvh max-w-[1440px] flex-col gap-3 px-3 py-3 md:px-4 md:py-4 lg:h-dvh">
         <header className="hud-shell shrink-0">
           <div className="hud-frame">
-            <div className="hud-frame-inner flex items-center gap-2 px-3 py-2 sm:gap-3">
+            <div className="hud-frame-inner flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center sm:gap-3 sm:py-2.5">
               <BrandLockup />
-              <div className="ml-auto flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 sm:ml-auto">
                 <NeonTray value={neon} onChange={onNeon} />
-                <AiChip active={aiOpen} onClick={() => setAiOpen(true)} />
-                <BrandChip onClick={() => setBrandOpen(true)} />
-                {stripeReady ? (
-                  <PayChip
-                    label={passLabel(pass)}
-                    active={active}
-                    onClick={() => setPayOpen(true)}
-                  />
-                ) : null}
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  <AiChip active={aiOpen} onClick={() => setAiOpen(true)} />
+                  <BrandChip onClick={() => setBrandOpen(true)} />
+                  {stripeReady ? (
+                    <PayChip
+                      label={passLabel(pass)}
+                      active={active}
+                      onClick={() => setPayOpen(true)}
+                    />
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
