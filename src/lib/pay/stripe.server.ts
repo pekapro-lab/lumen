@@ -182,7 +182,7 @@ export async function ensureWebhookEndpoint(): Promise<{
       const created = await stripe.webhookEndpoints.create({
         url,
         enabled_events: [...WEBHOOK_EVENTS],
-        description: "Lumen 3.0 pases",
+        description: "Lumen 4.0 pases",
       });
       await saveStripeConfig({
         webhookEndpointId: created.id,

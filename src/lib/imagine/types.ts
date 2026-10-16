@@ -81,7 +81,14 @@ export type GalleryItem = {
   resolution?: ImageResolution | VideoResolution;
   duration?: number;
   extendCount?: number;
+  /** Último origen remoto (puede caducar). Solo sirve para extender; nunca para descargar. */
   remoteUrl?: string;
+  /** Binario local del vídeo (IndexedDB). `dataUrl` es una URL de objeto derivada de él. */
+  blob?: Blob;
+  /** Calidad con la que se pidió la imagen. */
+  quality?: ImageQuality;
+  /** Si el vídeo se pidió con sonido. */
+  audio?: boolean;
 };
 
 export type GenerateImageInput = {

@@ -1,7 +1,9 @@
 export const BRAND = {
-  name: "Lumen 3.0",
+  name: "Lumen 4.0",
+  product: "Lumen",
+  version: "4.0",
   credit: "Hecho por PekaPro",
-  badge: "Sin tokens",
-  description: "Genera imágenes y vídeos por IA. Sin tokens, sin créditos, sin claves.",
+  description:
+    "Estudio de imagen y vídeo por IA: calidad, resolución, duración y sonido a tu medida.",
   themeColor: "#071018",
 } as const;

@@ -15,6 +15,7 @@ import { PlanosToggle } from "@/components/studio/video-prompts";
 import { fileToDataUrl, fileToVideoDataUrl } from "@/lib/gallery";
 import { ASPECT_RATIOS, IMAGE_RESOLUTIONS, STYLE_PRESETS, VIDEO_DURATIONS, VIDEO_RESOLUTIONS } from "@/lib/imagine/types";
 import { useStudio } from "@/lib/studio-store";
+import { imageTakeSummary, videoResolutionLabel, videoTakeSummary } from "@/lib/take";
 import { cn } from "@/lib/utils";
 
 export function Composer({
@@ -68,7 +69,6 @@ export function Composer({
     generate,
     enhance,
     suggestShotBoard,
-    saverMode,
   } = useStudio();
 
   async function onFile(file: File | undefined, target: "first" | "last" = "first") {
@@ -97,13 +97,34 @@ export function Composer({
   }
 
   const disabled = generating || available === false;
-  const locked = disabled || saverMode;
   const restoring = Boolean(sourceVideoDataUrl);
+  const midjourney = videoEngine === "midjourney" && !restoring;
+  // Con Midjourney se rueda siempre 6 s sin sonido; las opciones de Lumen se conservan intactas.
+  const shownDuration = midjourney ? 6 : videoDuration;
+  const shownAudio = midjourney ? false : generateAudio;
+  const finalFrameClamp =
+    !restoring && !midjourney && Boolean(lastFrameDataUrl) && videoResolution === "1080p";
+  const takeSummary = restoring
+    ? `Restauración · ${videoResolutionLabel(videoResolution)}`
+    : mode === "video"
+      ? videoTakeSummary({
+          duration: shownDuration,
+          resolution: videoResolution,
+          audio: shownAudio,
+          hasLastFrame: finalFrameClamp,
+        })
+      : imageTakeSummary(imageQuality, imageResolution);
 
   return (
-    <aside className="flex min-h-0 flex-col gap-3 px-3 pt-1 pb-3">
-      <div className="hud-chip flex items-center bg-elevated p-1">
+    <aside
+      className="flex min-h-0 min-w-0 flex-col gap-3 px-3 pt-1 pb-3"
+      role="tabpanel"
+      id="lumen-panel-mando"
+      aria-labelledby={mode === "image" ? "lumen-tab-imagen" : "lumen-tab-video"}
+    >
+      <div className="hud-chip flex items-center bg-elevated p-1" role="tablist" aria-label="Tipo de generación">
         <ModeTab
+          id="lumen-tab-imagen"
           active={mode === "image"}
           onClick={() => setMode("image")}
           icon={<ImageIcon />}
@@ -111,18 +132,13 @@ export function Composer({
         />
         <LumenMark className="size-8 hud-icon" />
         <ModeTab
+          id="lumen-tab-video"
           active={mode === "video"}
           onClick={() => setMode("video")}
           icon={<Clapperboard />}
           label="Vídeo"
         />
       </div>
-
-      {saverMode ? (
-        <p className="hud-chip bg-elevated px-3 py-2 text-xs text-muted">
-          Modo ahorro: imagen rápida a 1080 y vídeo 6 s a 480, sin gastar en prompt ni tomas.
-        </p>
-      ) : null}
 
       {mode === "video" ? (
         <VideoSlot
@@ -137,39 +153,45 @@ export function Composer({
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-3">
-          <label htmlFor="lumen-prompt" className="font-display text-[10px] font-semibold tracking-[0.16em] text-muted uppercase">
-            Describe la escena
-          </label>
-          <div className="flex items-center gap-1">
-            {mode === "video" ? <PlanosToggle /> : null}
-            <button
-              type="button"
-              onClick={() => void suggestShotBoard()}
-              disabled={
-                generating ||
-                suggestingShots ||
-                (prompt.trim().length < 3 && !current?.prompt)
-              }
-              className="inline-flex h-8 items-center gap-1.5 px-2 font-display text-[10px] tracking-[0.12em] text-muted uppercase transition-colors duration-150 hover:text-fg disabled:opacity-40"
-            >
-              {suggestingShots ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Aperture className="size-3.5" strokeWidth={1.75} />
-              )}
-              Tomas
-            </button>
-            <button
-              type="button"
-              onClick={() => void enhance()}
-              disabled={disabled || enhancing || prompt.trim().length < 3 || saverMode}
-              className="inline-flex h-8 items-center gap-1.5 px-2 font-display text-[10px] tracking-[0.12em] text-muted uppercase transition-colors duration-150 hover:text-fg disabled:opacity-40"
-            >
-              {enhancing ? <Loader2 className="size-3.5 animate-spin" /> : <PenLine className="size-3.5" />}
-              Mejorar
-            </button>
-          </div>
+        <label
+          htmlFor="lumen-prompt"
+          className="font-display text-[10px] font-semibold tracking-[0.16em] whitespace-nowrap text-muted uppercase"
+        >
+          Describe la escena
+        </label>
+        <div className="-mx-2 flex flex-wrap items-center gap-x-0.5">
+          {mode === "video" ? <PlanosToggle /> : null}
+          <button
+            type="button"
+            onClick={() => void suggestShotBoard()}
+            disabled={
+              generating ||
+              suggestingShots ||
+              (prompt.trim().length < 3 && !current?.prompt)
+            }
+            className="inline-flex h-8 items-center gap-1.5 px-2 font-display text-[10px] tracking-[0.12em] text-muted uppercase transition-colors duration-150 hover:text-fg disabled:opacity-40"
+          >
+            {suggestingShots ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Aperture className="size-3.5" strokeWidth={1.75} />
+            )}
+            Tomas
+          </button>
+          <button
+            type="button"
+            onClick={() => void enhance()}
+            disabled={generating || enhancing || prompt.trim().length < 3}
+            title={
+              prompt.trim().length < 3
+                ? "Escribe unas palabras para poder mejorar el prompt"
+                : "Reescribe el prompt con más detalle"
+            }
+            className="inline-flex h-8 items-center gap-1.5 px-2 font-display text-[10px] tracking-[0.12em] text-muted uppercase transition-colors duration-150 hover:text-fg disabled:opacity-40"
+          >
+            {enhancing ? <Loader2 className="size-3.5 animate-spin" /> : <PenLine className="size-3.5" />}
+            Mejorar
+          </button>
         </div>
         <Textarea
           id="lumen-prompt"
@@ -208,6 +230,8 @@ export function Composer({
                 key={ratio.value}
                 type="button"
                 disabled={disabled}
+                aria-pressed={active}
+                aria-label={`Formato ${ratio.label} · ${ratio.hint}`}
                 onClick={() => setAspectRatio(ratio.value)}
                 className={cn(
                   "hud-chip flex h-12 flex-col items-center justify-center gap-1 bg-elevated transition-[box-shadow,color] duration-150",
@@ -235,7 +259,7 @@ export function Composer({
           <Segmented
             label="Calidad"
             value={imageQuality}
-            disabled={locked}
+            disabled={disabled}
             options={[
               { value: "fast", label: "Rápida" },
               { value: "quality", label: "Alta" },
@@ -245,7 +269,7 @@ export function Composer({
           <Segmented
             label="Resolución"
             value={imageResolution}
-            disabled={locked}
+            disabled={disabled}
             options={IMAGE_RESOLUTIONS.map((r) => ({ value: r.value, label: r.label }))}
             onChange={setImageResolution}
           />
@@ -262,7 +286,7 @@ export function Composer({
             ]}
             onChange={(v) => setVideoEngine(v as "lumen" | "midjourney")}
           />
-          {videoEngine === "midjourney" && !restoring ? (
+          {midjourney ? (
             <>
               <Segmented
                 label="Motion"
@@ -295,28 +319,28 @@ export function Composer({
                 onChange={(v) => setMjLoop(v === "on")}
               />
               <p className="text-xs text-subtle">
-                Midjourney no tiene API. Lumen hace su flujo: fotograma y 6 s de movimiento.
+                Midjourney no tiene API. Lumen hace su flujo: fotograma y 6 s de movimiento, sin sonido. Tus ajustes de Lumen se conservan al volver.
               </p>
             </>
           ) : null}
           <Segmented
             label="Duración"
-            value={String(videoEngine === "midjourney" && !restoring ? 6 : videoDuration)}
-            disabled={locked || restoring || videoEngine === "midjourney"}
+            value={String(shownDuration)}
+            disabled={disabled || restoring || midjourney}
             options={VIDEO_DURATIONS.map((d) => ({ value: String(d.value), label: d.label }))}
             onChange={(v) => setVideoDuration(Number(v) as 6 | 10 | 15)}
           />
           <Segmented
             label="Resolución"
             value={videoResolution}
-            disabled={locked}
+            disabled={disabled}
             options={VIDEO_RESOLUTIONS.map((r) => ({ value: r.value, label: r.label }))}
             onChange={setVideoResolution}
           />
           <Segmented
             label="Audio"
-            value={videoEngine === "midjourney" || !generateAudio ? "off" : "on"}
-            disabled={locked || restoring || videoEngine === "midjourney"}
+            value={shownAudio ? "on" : "off"}
+            disabled={disabled || restoring || midjourney}
             options={[
               { value: "on", label: "Sonido" },
               { value: "off", label: "Silencio" },
@@ -327,8 +351,10 @@ export function Composer({
             <p className="text-xs text-subtle">
               Restauración: hasta 1 minuto, por tramos. Se pide esa resolución; si el modelo no la admite, se mantiene la original (máx. 720).
             </p>
-          ) : lastFrameDataUrl && videoResolution === "1080p" ? (
-            <p className="text-xs text-subtle">Con fotograma final el plano se rueda a 720.</p>
+          ) : finalFrameClamp ? (
+            <p className="text-xs text-subtle" data-testid="clamp-note">
+              Límite de la API: con fotograma final, 1080 se rueda a 720.
+            </p>
           ) : null}
         </>
       )}
@@ -343,6 +369,7 @@ export function Composer({
                 key={preset.id}
                 type="button"
                 disabled={disabled}
+                aria-pressed={on}
                 onClick={() => toggleStyle(preset.id)}
                 className={cn(
                   "hud-chip h-8 px-3 text-xs font-medium transition-[background-color,color,box-shadow] duration-150",
@@ -418,6 +445,13 @@ export function Composer({
             "Generar imagen"
           )}
         </Button>
+        <p
+          className="mt-2 text-center font-display text-xs font-semibold tracking-[0.06em] text-muted tabular-nums"
+          data-testid="take-summary"
+          aria-live="polite"
+        >
+          {takeSummary}
+        </p>
         {available === false ? (
           <p className="mt-2 text-center text-xs text-muted">
             La generación no está disponible: faltan créditos o SuperGrok.
@@ -431,11 +465,13 @@ export function Composer({
 }
 
 function ModeTab({
+  id,
   active,
   onClick,
   icon,
   label,
 }: {
+  id: string;
   active: boolean;
   onClick: () => void;
   icon: ReactNode;
@@ -444,13 +480,18 @@ function ModeTab({
   return (
     <button
       type="button"
+      role="tab"
+      id={id}
+      aria-selected={active}
+      aria-controls="lumen-panel-mando"
+      aria-label={label}
       onClick={onClick}
       className={cn(
         "flex h-9 flex-1 items-center justify-center gap-2 font-display text-[11px] font-semibold tracking-[0.12em] uppercase transition-[background-color,color] duration-150",
         active ? "bg-elevated text-fg shadow-[var(--shadow-border)]" : "text-muted hover:text-fg",
       )}
     >
-      <span className="[&_svg]:size-4">{icon}</span>
+      <span className="[&_svg]:size-4" aria-hidden>{icon}</span>
       {label}
     </button>
   );
@@ -480,6 +521,8 @@ function Segmented<T extends string>({
               key={opt.value}
               type="button"
               disabled={disabled}
+              aria-pressed={on}
+              aria-label={`${label}: ${opt.label}`}
               onClick={() => onChange(opt.value)}
               className={cn(
                 "h-8 flex-1 font-display text-[10px] font-semibold tracking-[0.1em] uppercase transition-[background-color,color] duration-150",

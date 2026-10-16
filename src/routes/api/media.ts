@@ -36,6 +36,13 @@ export const Route = createFileRoute("/api/media")({
           "content-type": type,
           "cache-control": "private, max-age=3600",
         });
+        const download = new URL(request.url).searchParams.get("download");
+        if (download) {
+          // Descarga nativa del navegador: el cuerpo se reenvía en streaming, sin buffer.
+          const safe = download.replace(/[^\w.-]+/g, "_").slice(0, 120) || "lumen-4.0.mp4";
+          headers.set("content-disposition", `attachment; filename="${safe}"`);
+          headers.set("cache-control", "no-store");
+        }
         const length = upstream.headers.get("content-length");
         if (length) headers.set("content-length", length);
         return new Response(upstream.body, { status: 200, headers });

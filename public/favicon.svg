@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Lumen 4.0">
   <rect width="32" height="32" fill="#05070e"/>
   <polygon points="16,3.2 27.5,10 27.5,22 16,28.8 4.5,22 4.5,10" fill="none" stroke="#22e6ff" stroke-width="1.7" stroke-linejoin="round"/>
-  <polygon points="16,9 22.2,12.7 22.2,19.3 16,23 9.8,19.3 9.8,12.7" fill="#22e6ff"/>
+  <polygon points="16,7.4 24,12 24,20 16,24.6 8,20 8,12" fill="#22e6ff"/>
+  <path transform="translate(11.91 20.03)" d="M5.27 0V-2.04H0.07V-3.34L5.31 -8.07H6.61V-3.39H7.77V-2.04H6.61V0ZM2.09 -3.39H5.27V-6.07Z" fill="#05070e"/>
 </svg>

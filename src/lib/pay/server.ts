@@ -11,36 +11,23 @@ const confirmInput = z.object({
   sessionId: z.string().min(8).max(200),
 });
 
-export type PayStatus = {
-  ready: boolean;
-  webhook: {
-    url: string;
-    registered: boolean;
-    listening: boolean;
-    events: string[];
-  };
-};
+/** Solo expone si el cobro está disponible. Nada de detalles internos (webhook, claves, URLs). */
+export type PayStatus = { ready: boolean };
 
 export const getPayStatus = createServerFn({ method: "POST" }).handler(async (): Promise<PayStatus> => {
-  const { isStripeReady, ensureWebhookEndpoint, webhookStatus } = await import("./stripe.server");
+  // Sin clave de Stripe no hace falta cargar el módulo de pagos (que arranca la base de datos):
+  // la mayoría de visitas solo necesitan saber que el cobro no está configurado.
+  const hasKey = Boolean(
+    process.env["STRIPE_SECRET_KEY"]?.trim() || process.env["STRIPE_API_KEY"]?.trim(),
+  );
+  if (!hasKey) return { ready: false };
+  const { isStripeReady, ensureWebhookEndpoint } = await import("./stripe.server");
   const ready = isStripeReady();
-  try {
-    const webhook = ready ? await ensureWebhookEndpoint() : await webhookStatus();
-    return { ready, webhook };
-  } catch {
-    const webhook = await webhookStatus().catch(() => ({
-      url: "/api/stripe/webhook",
-      registered: false,
-      listening: false,
-      events: [
-        "checkout.session.completed",
-        "checkout.session.async_payment_succeeded",
-        "checkout.session.async_payment_failed",
-        "charge.refunded",
-      ],
-    }));
-    return { ready, webhook };
+  if (ready) {
+    // El endpoint se registra en el servidor; el resultado no se envía al navegador.
+    void ensureWebhookEndpoint().catch(() => undefined);
   }
+  return { ready };
 });
 
 export const startCheckout = createServerFn({ method: "POST" })
@@ -49,19 +36,10 @@ export const startCheckout = createServerFn({ method: "POST" })
     const { getStripe, appOrigin, isStripeReady, ensureWebhookEndpoint } = await import("./stripe.server");
     const plan = getPlan(data.planId);
     if (!plan) return { ok: false, error: "Ese pase no existe." };
-    if (!isStripeReady()) {
-      return {
-        ok: false,
-        error: "Stripe no está conectado. Conecta tu cuenta de Stripe para cobrar los pases.",
-      };
-    }
+    const unavailable = "El pago no está disponible ahora mismo. Inténtalo más tarde.";
+    if (!isStripeReady()) return { ok: false, error: unavailable };
     const stripe = getStripe();
-    if (!stripe) {
-      return {
-        ok: false,
-        error: "Stripe no está conectado. Conecta tu cuenta de Stripe para cobrar los pases.",
-      };
-    }
+    if (!stripe) return { ok: false, error: unavailable };
     void ensureWebhookEndpoint();
     const origin = appOrigin();
     try {
@@ -77,7 +55,7 @@ export const startCheckout = createServerFn({ method: "POST" })
               currency: "eur",
               unit_amount: Math.round(plan.euros * 100),
               product_data: {
-                name: `Lumen 3.0 · ${plan.name}`,
+                name: `Lumen 4.0 · ${plan.name}`,
                 description: plan.blurb,
               },
             },
@@ -92,8 +70,8 @@ export const startCheckout = createServerFn({ method: "POST" })
       if (!session.url) return { ok: false, error: "Stripe no devolvió la página de pago." };
       return { ok: true, url: session.url };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo abrir Stripe.";
-      return { ok: false, error: message };
+      console.error("Stripe checkout failed", err);
+      return { ok: false, error: "No se pudo abrir la página de pago. Inténtalo de nuevo." };
     }
   });
 
@@ -102,7 +80,7 @@ export const confirmCheckout = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true; pass: StudioPass } | { ok: false; error: string }> => {
     const { isStripeReady, confirmPaidSession } = await import("./stripe.server");
     if (!isStripeReady()) {
-      return { ok: false, error: "Stripe no está conectado." };
+      return { ok: false, error: "El pago no está disponible ahora mismo." };
     }
     try {
       const pass = await confirmPaidSession(data.sessionId);

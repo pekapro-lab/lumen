@@ -1,6 +1,7 @@
 import type { GalleryItem } from "@/lib/imagine/types";
 import { MAX_RESTORE_SECONDS, RESTORE_CHUNK_SECONDS } from "@/lib/imagine/types";
 import { blitImage } from "@/lib/gl-blit";
+import { downloadName } from "@/lib/take";
 
 const DB_NAME = "lumen";
 const STORE = "items";
@@ -28,15 +29,45 @@ function txDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
+// Los vídeos se guardan como binario (Blob) en IndexedDB. `dataUrl` en memoria es una URL de
+// objeto derivada del Blob; en disco queda vacía para no duplicar ni recodificar a Base64.
+const blobUrls = new Map<string, string>();
+
+export function blobUrlFor(id: string, blob: Blob): string {
+  let url = blobUrls.get(id);
+  if (!url) {
+    url = URL.createObjectURL(blob);
+    blobUrls.set(id, url);
+  }
+  return url;
+}
+
+function revokeBlobUrl(id: string) {
+  const url = blobUrls.get(id);
+  if (url) URL.revokeObjectURL(url);
+  blobUrls.delete(id);
+}
+
+function fromStored(item: GalleryItem): GalleryItem {
+  if (item.blob instanceof Blob && item.blob.size > 0) {
+    return { ...item, dataUrl: blobUrlFor(item.id, item.blob) };
+  }
+  return item;
+}
+
+function toStored(item: GalleryItem): GalleryItem {
+  return item.blob ? { ...item, dataUrl: "" } : item;
+}
+
 export async function listGallery(): Promise<GalleryItem[]> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
     const req = tx.objectStore(STORE).getAll();
     req.onsuccess = () => {
-      const items = (req.result as GalleryItem[]).sort(
-        (a, b) => b.createdAt - a.createdAt,
-      );
+      const items = (req.result as GalleryItem[])
+        .map(fromStored)
+        .sort((a, b) => b.createdAt - a.createdAt);
       resolve(items);
     };
     req.onerror = () => reject(req.error);
@@ -51,7 +82,7 @@ export async function saveGalleryItem(item: GalleryItem): Promise<GalleryItem[]>
 
   const tx = db.transaction(STORE, "readwrite");
   const store = tx.objectStore(STORE);
-  store.put(item);
+  store.put(toStored(item));
   for (const old of drop) store.delete(old.id);
   try {
     await txDone(tx);
@@ -60,9 +91,10 @@ export async function saveGalleryItem(item: GalleryItem): Promise<GalleryItem[]>
     const rs = retry.objectStore(STORE);
     const oldest = existing[existing.length - 1];
     if (oldest) rs.delete(oldest.id);
-    rs.put(item);
+    rs.put(toStored(item));
     await txDone(retry);
   }
+  for (const old of drop) revokeBlobUrl(old.id);
   return listGallery();
 }
 
@@ -71,6 +103,7 @@ export async function deleteGalleryItem(id: string): Promise<GalleryItem[]> {
   const tx = db.transaction(STORE, "readwrite");
   tx.objectStore(STORE).delete(id);
   await txDone(tx);
+  revokeBlobUrl(id);
   return listGallery();
 }
 
@@ -83,20 +116,59 @@ export function playableSrc(src: string): string {
   return `/api/media?src=${encodeURIComponent(src)}`;
 }
 
-export async function materializeMedia(src: string): Promise<string> {
-  if (!isRemoteMedia(src)) return src;
+const MAX_VIDEO_BYTES = 300_000_000;
+
+/**
+ * Baja el vídeo remoto por el proxy del servidor y lo recibe en streaming, trozo a trozo, hasta
+ * dejarlo como Blob binario (sin pasar por Base64). Devuelve null si no se puede.
+ */
+export async function fetchVideoBlob(
+  src: string,
+  onProgress?: (fraction: number) => void,
+): Promise<Blob | null> {
   try {
-    const res = await fetch(playableSrc(src), { signal: AbortSignal.timeout(120_000) });
-    if (!res.ok) return src;
-    const blob = await res.blob();
-    if (blob.size < 32 || blob.size > 55_000_000) return src;
-    return await blobToDataUrl(blob);
+    const res = await fetch(playableSrc(src), { signal: AbortSignal.timeout(180_000) });
+    if (!res.ok) return null;
+    const type = res.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() ?? "";
+    if (type && !type.startsWith("video/") && type !== "application/octet-stream") return null;
+    const total = Number(res.headers.get("content-length")) || 0;
+    if (!res.body) {
+      const blob = await res.blob();
+      return blob.size >= 32 ? blob : null;
+    }
+    const reader = res.body.getReader();
+    const chunks: Uint8Array<ArrayBuffer>[] = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      chunks.push(value as Uint8Array<ArrayBuffer>);
+      received += value.byteLength;
+      if (received > MAX_VIDEO_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      if (total) onProgress?.(Math.min(1, received / total));
+    }
+    if (received < 32) return null;
+    return new Blob(chunks, { type: type.startsWith("video/") ? type : "video/mp4" });
   } catch {
-    return src;
+    return null;
   }
 }
 
-function blobToDataUrl(blob: Blob): Promise<string> {
+/** Convierte un vídeo remoto en un Blob local si se puede; si no, deja la URL remota. */
+export async function materializeVideo(
+  src: string,
+  onProgress?: (fraction: number) => void,
+): Promise<{ src: string; blob?: Blob }> {
+  if (!isRemoteMedia(src)) return { src };
+  const blob = await fetchVideoBlob(src, onProgress);
+  return blob ? { src, blob } : { src };
+}
+
+export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
@@ -105,15 +177,119 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export function downloadItem(item: GalleryItem) {
-  const ext = item.kind === "video" ? "mp4" : item.dataUrl.includes("png") ? "png" : "jpg";
-  const stamp = new Date(item.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
-  const res = item.resolution ? `-${item.resolution}` : "";
+export class DownloadError extends Error {}
+
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = playableSrc(item.dataUrl);
-  a.download = `lumen-2.0${res}-${stamp}.${ext}`;
+  a.href = url;
+  a.download = name;
   a.rel = "noopener";
+  document.body.appendChild(a);
   a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+
+type SaveFilePicker = (options: {
+  suggestedName: string;
+  types?: { description: string; accept: Record<string, string[]> }[];
+}) => Promise<{ createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+
+/**
+ * Vídeo que solo existe en el servidor: se descarga en streaming, sin cargarlo entero en memoria.
+ * - Chrome/Edge: se vuelca directamente a disco con showSaveFilePicker (progreso nativo).
+ * - Resto: se comprueba la respuesta y se lanza la descarga nativa del navegador, que hace streaming.
+ * Se llama sin `await` previo para conservar el gesto del usuario que exige el selector de archivos.
+ */
+async function streamRemoteVideo(item: GalleryItem, remote: string): Promise<void> {
+  const name = downloadName(item, "video/mp4");
+  const base = playableSrc(remote);
+  const picker = (window as unknown as { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
+
+  if (picker) {
+    let handle: Awaited<ReturnType<SaveFilePicker>> | null = null;
+    try {
+      handle = await picker({
+        suggestedName: name,
+        types: [{ description: "Vídeo MP4", accept: { "video/mp4": [".mp4"] } }],
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      handle = null;
+    }
+    if (handle) {
+      let res: Response;
+      try {
+        res = await fetch(base);
+      } catch {
+        throw new DownloadError("No se pudo conectar con el servidor para bajar el vídeo.");
+      }
+      if (!res.ok || !res.body) {
+        throw new DownloadError("El enlace del vídeo ha caducado. Vuelve a generarlo.");
+      }
+      try {
+        const writable = await handle.createWritable();
+        await res.body.pipeTo(writable);
+      } catch {
+        throw new DownloadError("La descarga se interrumpió antes de terminar. Inténtalo de nuevo.");
+      }
+      return;
+    }
+  }
+
+  let probe: Response;
+  try {
+    probe = await fetch(base);
+  } catch {
+    throw new DownloadError("No se pudo conectar con el servidor para bajar el vídeo.");
+  }
+  const type = probe.headers.get("content-type") ?? "";
+  void probe.body?.cancel().catch(() => undefined);
+  if (!probe.ok || (type && !/^(video\/|application\/octet-stream)/i.test(type))) {
+    throw new DownloadError("El enlace del vídeo ha caducado. Vuelve a generarlo.");
+  }
+  const a = document.createElement("a");
+  a.href = `${base}&download=${encodeURIComponent(name)}`;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * Descarga una toma como archivo real (.mp4/.webm/.jpg/.png). Nunca usa la URL firmada del
+ * proveedor como href:
+ *  - con binario local (Blob) se guarda tal cual, sin recodificar;
+ *  - una imagen/vídeo antiguo en data: URL se decodifica a Blob (no se vuelve a codificar);
+ *  - un vídeo que solo está en el servidor se baja en streaming (ver streamRemoteVideo).
+ * Lanza DownloadError con un mensaje en español si algo falla.
+ */
+export async function downloadItem(item: GalleryItem): Promise<void> {
+  const remote = item.remoteUrl && isRemoteMedia(item.remoteUrl) ? item.remoteUrl : item.dataUrl;
+  if (item.kind === "video" && !item.blob && isRemoteMedia(remote)) {
+    return streamRemoteVideo(item, remote);
+  }
+
+  let blob = item.blob ?? null;
+  if (!blob) {
+    if (!item.dataUrl || isRemoteMedia(item.dataUrl)) {
+      throw new DownloadError("No hay archivo guardado para descargar. Vuelve a generar la toma.");
+    }
+    try {
+      blob = await (await fetch(item.dataUrl)).blob();
+    } catch {
+      throw new DownloadError("No se pudo leer el archivo guardado. Vuelve a generar la toma.");
+    }
+  }
+  if (blob.size < 32) {
+    throw new DownloadError("El archivo guardado está vacío. Vuelve a generar la toma.");
+  }
+  const mime = blob.type || (item.kind === "video" ? "video/mp4" : "image/jpeg");
+  if (item.kind === "video" && !mime.startsWith("video/")) {
+    throw new DownloadError("El archivo guardado no es un vídeo válido. Vuelve a generar la toma.");
+  }
+  saveBlob(blob, downloadName(item, mime));
 }
 
 export async function fileToDataUrl(file: File): Promise<string> {
@@ -276,8 +452,9 @@ export async function captureLastFrame(src: string): Promise<string> {
   return canvas.toDataURL("image/jpeg", 0.9);
 }
 
-export async function concatVideoDataUrls(parts: string[]): Promise<string> {
-  if (parts.length === 1) return parts[0]!;
+/** Une varios planos en un único vídeo y devuelve el binario (WebM), sin pasar por Base64. */
+export async function concatVideos(parts: string[]): Promise<Blob> {
+  if (parts.length === 1) return (await fetch(playableSrc(parts[0]!))).blob();
   const videos = await Promise.all(parts.map((src) => loadVideo(src)));
   const width = Math.max(1, videos[0]?.videoWidth || 1280);
   const height = Math.max(1, videos[0]?.videoHeight || 720);
@@ -317,13 +494,7 @@ export async function concatVideoDataUrls(parts: string[]): Promise<string> {
     recorder.stop();
   });
   for (const video of videos) video.src = "";
-  const blob = new Blob(chunks, { type: mime });
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
+  return new Blob(chunks, { type: mime });
 }
 
 function even(n: number) {

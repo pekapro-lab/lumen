@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { create } from "zustand";
 import {
   enhancePrompt,
@@ -23,13 +24,17 @@ import type {
 } from "@/lib/imagine/types";
 import { STYLE_PRESETS, secondsToAdd } from "@/lib/imagine/types";
 import {
+  blobToDataUrl,
+  blobUrlFor,
   captureLastFrame,
   compactDataUrl,
-  concatVideoDataUrls,
+  concatVideos,
   deleteGalleryItem,
+  downloadItem,
+  DownloadError,
   isRemoteMedia,
   listGallery,
-  materializeMedia,
+  materializeVideo,
   measureVideoSeconds,
   releaseVideoSrc,
   saveGalleryItem,
@@ -38,23 +43,9 @@ import {
   attachThumb,
 } from "@/lib/gallery";
 import { localShots, withShotIds } from "@/lib/imagine/shots";
-import {
-  buildMjStillPrompt,
-  buildMjVideoPrompt,
-  mjVideoDuration,
-  mjVideoResolution,
-} from "@/lib/imagine/midjourney";
+import { buildMjStillPrompt, buildMjVideoPrompt, mjVideoDuration } from "@/lib/imagine/midjourney";
 import { loadPass } from "@/lib/pay/pass";
-import {
-  SAVER_CAMERA,
-  imageCost,
-  jobCost,
-  loadSpend,
-  saveSpend,
-  todayKey,
-  videoCost,
-  type SpendSnapshot,
-} from "@/lib/spend";
+import { effectiveVideoResolution } from "@/lib/take";
 
 function buildPrompt(prompt: string, styleIds: string[]): string {
   const base = prompt.trim();
@@ -159,7 +150,7 @@ async function waitForVideo(
   }
   set({
     generating: false,
-    error: "El vídeo tardó demasiado. Prueba un plano más simple o 6 s a 480.",
+    error: "El vídeo tardó demasiado. Prueba un plano más simple o una duración menor.",
     statusText: "",
     progress: 0,
   });
@@ -204,10 +195,7 @@ type StudioState = {
   statusText: string;
   error: string | null;
   available: boolean | null;
-  capEur: number | null;
-  allowVideo: boolean;
-  saverMode: boolean;
-  spentEur: number;
+  downloading: boolean;
   setMode: (mode: MediaKind) => void;
   setPrompt: (prompt: string) => void;
   setAspectRatio: (aspectRatio: AspectRatio) => void;
@@ -235,51 +223,17 @@ type StudioState = {
   remove: (id: string) => Promise<void>;
   animateCurrent: () => void;
   extendCurrent: () => Promise<void>;
-  setSpend: (patch: Partial<Pick<SpendSnapshot, "capEur" | "allowVideo" | "saverMode">>) => void;
-  resetSpendToday: () => void;
+  download: (item: GalleryItem) => Promise<void>;
 };
-
-function persistSpend(s: {
-  capEur: number | null;
-  allowVideo: boolean;
-  saverMode: boolean;
-  spentEur: number;
-}) {
-  saveSpend({
-    capEur: s.capEur,
-    allowVideo: s.allowVideo,
-    saverMode: s.saverMode,
-    day: todayKey(),
-    spentEur: s.spentEur,
-  });
-}
-
-function currentJobCost(s: {
-  mode: MediaKind;
-  imageQuality: ImageQuality;
-  imageResolution: ImageResolution;
-  videoDuration: VideoDuration;
-  videoResolution: VideoResolution;
-  referenceDataUrl: string | null;
-}) {
-  return jobCost({
-    mode: s.mode,
-    imageQuality: s.imageQuality,
-    imageResolution: s.imageResolution,
-    videoDuration: s.videoDuration,
-    videoResolution: s.videoResolution,
-    hasReference: Boolean(s.referenceDataUrl),
-  });
-}
 
 export const useStudio = create<StudioState>((set, get) => ({
   mode: "image",
   prompt: "",
   aspectRatio: "16:9",
-  imageQuality: "fast",
+  imageQuality: "quality",
   imageResolution: "1080",
   videoDuration: 6,
-  videoResolution: "480p",
+  videoResolution: "720p",
   generateAudio: false,
   videoEngine: "lumen",
   mjMotion: "low",
@@ -301,10 +255,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   statusText: "",
   error: null,
   available: null,
-  capEur: 3,
-  allowVideo: true,
-  saverMode: true,
-  spentEur: 0,
+  downloading: false,
 
   setMode: (mode) => {
     const s = get();
@@ -332,12 +283,9 @@ export const useStudio = create<StudioState>((set, get) => ({
   setVideoDuration: (videoDuration) => set({ videoDuration }),
   setVideoResolution: (videoResolution) => set({ videoResolution }),
   setGenerateAudio: (generateAudio) => set({ generateAudio }),
-  setVideoEngine: (videoEngine) =>
-    set(
-      videoEngine === "midjourney"
-        ? { videoEngine, videoDuration: 6, generateAudio: false }
-        : { videoEngine },
-    ),
+  // Cambiar de motor no toca las opciones elegidas: con Midjourney la interfaz muestra y envía
+  // 6 s sin sonido, y al volver a Lumen se recupera exactamente lo que estaba marcado.
+  setVideoEngine: (videoEngine) => set({ videoEngine }),
   setMjMotion: (mjMotion) => set({ mjMotion }),
   setMjRaw: (mjRaw) => set({ mjRaw }),
   setMjLoop: (mjLoop) => set({ mjLoop }),
@@ -355,36 +303,11 @@ export const useStudio = create<StudioState>((set, get) => ({
   setCurrent: (item) => set({ current: item }),
 
   hydrate: async () => {
-    const spend = typeof window === "undefined" ? null : loadSpend();
     try {
       const [items, status] = await Promise.all([listGallery(), getAiStatus()]);
-      set({
-        items,
-        current: items[0] ?? null,
-        available: status.available,
-        ...(spend
-          ? {
-              capEur: spend.capEur,
-              allowVideo: spend.allowVideo,
-              saverMode: spend.saverMode,
-              spentEur: spend.spentEur,
-              ...(spend.saverMode ? SAVER_CAMERA : {}),
-            }
-          : {}),
-      });
+      set({ items, current: items[0] ?? null, available: status.available });
     } catch {
-      set({
-        available: true,
-        ...(spend
-          ? {
-              capEur: spend.capEur,
-              allowVideo: spend.allowVideo,
-              saverMode: spend.saverMode,
-              spentEur: spend.spentEur,
-              ...(spend.saverMode ? SAVER_CAMERA : {}),
-            }
-          : {}),
-      });
+      set({ available: true });
     }
   },
 
@@ -396,18 +319,6 @@ export const useStudio = create<StudioState>((set, get) => ({
       set({ error: "Escribe un prompt un poco más concreto." });
       return;
     }
-    const mj = s.mode === "video" && s.videoEngine === "midjourney" && !restoring;
-    const mjDuration = mj ? mjVideoDuration() : s.videoDuration;
-    const mjResolution = mj ? mjVideoResolution(s.videoResolution) : s.videoResolution;
-    const cost = restoring
-      ? videoCost(
-          Math.max(2, Math.round(s.sourceVideoSeconds || s.videoDuration)),
-          s.videoResolution === "1080p" ? "720p" : s.videoResolution,
-        )
-      : mj
-        ? videoCost(mjDuration, mjResolution) +
-          (s.referenceDataUrl ? 0 : imageCost(s.saverMode ? "fast" : "quality", "1080", false))
-        : currentJobCost(s);
 
     set({
       generating: true,
@@ -455,37 +366,42 @@ export const useStudio = create<StudioState>((set, get) => ({
           usedResolution = start.resolution;
           const remoteUrl = await waitForVideo(start.requestId, get, set, label);
           if (!remoteUrl) return;
-          restored.push(await materializeMedia(remoteUrl));
+          const part = await materializeVideo(remoteUrl);
+          restored.push(part.blob ? blobUrlFor(`restore-${i}-${Date.now()}`, part.blob) : remoteUrl);
         }
         if (!get().generating) return;
         set({
           statusText: restored.length > 1 ? "Uniendo los tramos…" : "Guardando el plano…",
           progress: 90,
         });
+        const id = crypto.randomUUID();
+        let blob: Blob | undefined;
         let dataUrl = restored[0]!;
-        if (restored.length > 1) dataUrl = await concatVideoDataUrls(restored);
+        if (restored.length > 1) blob = await concatVideos(restored);
+        else if (!isRemoteMedia(dataUrl)) blob = await (await fetch(dataUrl)).blob();
+        if (blob) dataUrl = blobUrlFor(id, blob);
         const measured = await measureVideoSeconds(dataUrl);
         const item: GalleryItem = {
-          id: crypto.randomUUID(),
+          id,
           kind: "video",
           prompt: s.prompt.trim() || "Restauración",
           dataUrl,
+          blob,
           aspectRatio: s.aspectRatio,
           createdAt: Date.now(),
           resolution: usedResolution,
           duration: measured || Math.round(s.sourceVideoSeconds) || s.videoDuration,
           extendCount: 0,
+          audio: false,
+          remoteUrl: blob ? undefined : dataUrl,
         };
         const items = await saveGalleryItem(item);
-        const spentEur = Math.round((get().spentEur + cost) * 100) / 100;
-        persistSpend({ ...get(), spentEur });
         set({
           current: item,
           items,
           generating: false,
           statusText: "",
           progress: 100,
-          spentEur,
         });
         return;
       }
@@ -506,22 +422,13 @@ export const useStudio = create<StudioState>((set, get) => ({
           return;
         }
         let dataUrl = result.dataUrl;
-        if (s.imageQuality === "fast" && (s.imageResolution === "2k" || s.imageResolution === "4k")) {
-          set({
-            statusText: s.imageResolution === "4k" ? "Ampliando a 4K en local…" : "Ampliando a 2K en local…",
-            progress: 88,
-          });
-          try {
-            dataUrl = await scaleDataUrl(dataUrl, s.imageResolution === "4k" ? 3.2 : 2, 0.86);
-          } catch {
-            // Keep the 1K original if the upscale fails.
-          }
-        } else if (s.imageResolution === "4k") {
+        if (s.imageResolution === "4k") {
+          // La API llega a 2K como máximo: el 4K se amplía x2 en local, sea Rápida o Alta.
           set({ statusText: "Ampliando a 4K…", progress: 88 });
           try {
             dataUrl = await scaleDataUrl(dataUrl, 2, 0.88);
           } catch {
-            // Keep the 2K original if the upscale fails.
+            // Se conserva el 2K original si la ampliación falla.
           }
         }
         const item = await attachThumb({
@@ -533,17 +440,15 @@ export const useStudio = create<StudioState>((set, get) => ({
           createdAt: Date.now(),
           sourceDataUrl: await compactSource(sourceRef),
           resolution: s.imageResolution,
+          quality: s.imageQuality,
         });
         const items = await saveGalleryItem(item);
-        const spentEur = Math.round((get().spentEur + cost) * 100) / 100;
-        persistSpend({ ...get(), spentEur });
         set({
           current: item,
           items,
           generating: false,
           statusText: "",
           progress: 100,
-          spentEur,
         });
         return;
       }
@@ -555,13 +460,12 @@ export const useStudio = create<StudioState>((set, get) => ({
 
       let firstFrame = referenceDataUrl;
       let videoPrompt = prompt;
-      let duration = s.videoDuration;
-      let resolution = s.videoResolution;
+      let duration: VideoDuration = s.videoDuration;
       let generateAudio = s.generateAudio;
 
       if (s.videoEngine === "midjourney") {
+        // Midjourney no tiene API: se rueda un fotograma y 6 s de movimiento, sin sonido.
         duration = mjVideoDuration();
-        resolution = mjVideoResolution(s.videoResolution);
         generateAudio = false;
         videoPrompt = buildMjVideoPrompt(s.prompt, s.mjMotion, s.mjRaw, s.mjLoop);
         if (!firstFrame) {
@@ -570,7 +474,7 @@ export const useStudio = create<StudioState>((set, get) => ({
             data: {
               prompt: buildMjStillPrompt(s.prompt, s.mjRaw),
               aspectRatio: s.aspectRatio,
-              quality: s.saverMode ? "fast" : "quality",
+              quality: "quality",
               resolution: "1080",
               pass: loadPass(),
             },
@@ -584,15 +488,20 @@ export const useStudio = create<StudioState>((set, get) => ({
         set({ statusText: "Animando al estilo Midjourney…", progress: 22 });
       }
 
+      // Única restricción de la API: con fotograma final, 1080 sale a 720. Se calcula aquí para
+      // que la toma guardada refleje lo que realmente se rueda.
+      const sentLastFrame = s.videoEngine === "midjourney" ? null : lastFrameDataUrl;
+      const resolution = effectiveVideoResolution(s.videoResolution, Boolean(sentLastFrame));
+
       const start = await startVideo({
         data: {
           prompt: videoPrompt,
           aspectRatio: s.aspectRatio,
           duration,
-          resolution,
+          resolution: s.videoResolution,
           generateAudio,
           referenceDataUrl: firstFrame,
-          lastFrameDataUrl: s.videoEngine === "midjourney" ? null : lastFrameDataUrl,
+          lastFrameDataUrl: sentLastFrame,
           pass: loadPass(),
         },
       });
@@ -606,29 +515,31 @@ export const useStudio = create<StudioState>((set, get) => ({
       if (!remoteUrl) return;
 
       set({ statusText: "Guardando el plano…", progress: 92 });
-      const dataUrl = await materializeMedia(remoteUrl);
+      const saved = await materializeVideo(remoteUrl, (f) =>
+        set({ progress: 92 + Math.round(f * 6) }),
+      );
+      const id = crypto.randomUUID();
       const item: GalleryItem = {
-        id: crypto.randomUUID(),
+        id,
         kind: "video",
         prompt: s.prompt.trim(),
-        dataUrl,
+        dataUrl: saved.blob ? blobUrlFor(id, saved.blob) : remoteUrl,
+        blob: saved.blob,
         aspectRatio: s.aspectRatio,
         createdAt: Date.now(),
         resolution,
         duration,
         extendCount: 0,
+        audio: generateAudio,
         remoteUrl: isRemoteMedia(remoteUrl) ? remoteUrl : undefined,
       };
       const items = await saveGalleryItem(item);
-      const spentEur = Math.round((get().spentEur + cost) * 100) / 100;
-      persistSpend({ ...get(), spentEur });
       set({
         current: item,
         items,
         generating: false,
         statusText: "",
         progress: 100,
-        spentEur,
       });
     } catch (err) {
       set({
@@ -654,15 +565,6 @@ export const useStudio = create<StudioState>((set, get) => ({
       });
       return;
     }
-    const extendCost = videoCost(
-      add,
-      current.resolution === "1080p" || current.resolution === "720p" || current.resolution === "480p"
-        ? current.resolution === "1080p"
-          ? "720p"
-          : current.resolution
-        : s.videoResolution,
-    );
-
     const rawPrompt = s.prompt.trim().length >= 3 ? s.prompt.trim() : current.prompt;
     const prompt = buildPrompt(
       `Continúa el plano sin corte, mismo ritmo y luz. ${rawPrompt}`,
@@ -678,16 +580,24 @@ export const useStudio = create<StudioState>((set, get) => ({
     });
 
     try {
-      let dataUrl: string | null = null;
+      let remote: string | null = null;
+      let blob: Blob | undefined;
       let added = add;
-      let remoteUrl: string | undefined;
-      const source = current.remoteUrl && isRemoteMedia(current.remoteUrl)
-        ? current.remoteUrl
-        : current.dataUrl;
-      const smallEnough =
-        isRemoteMedia(source) || (source.startsWith("data:") && source.length < 12_000_000);
+      let usedAudio = current.audio;
+      let usedResolution: GalleryItem["resolution"] = current.resolution === "1080p" ? "720p" : current.resolution;
+      // Origen para la extensión por API: la URL remota si sigue viva o, si no, el binario local
+      // cuando es lo bastante pequeño para enviarlo en línea.
+      let source: string | null =
+        current.remoteUrl && isRemoteMedia(current.remoteUrl) ? current.remoteUrl : null;
+      if (!source && current.blob && current.blob.size < 8_000_000) {
+        source = await blobToDataUrl(current.blob);
+      } else if (!source && current.dataUrl.startsWith("data:") && current.dataUrl.length < 12_000_000) {
+        source = current.dataUrl;
+      } else if (!source && isRemoteMedia(current.dataUrl)) {
+        source = current.dataUrl;
+      }
 
-      if (smallEnough) {
+      if (source) {
         try {
           const start = await startExtend({
             data: {
@@ -700,29 +610,27 @@ export const useStudio = create<StudioState>((set, get) => ({
           if (start.ok) {
             added = start.addedSeconds;
             set({ statusText: "Alargando el movimiento…", progress: 18 });
-            dataUrl = await waitForVideo(start.requestId, get, set, "Alargando el movimiento…");
-            if (dataUrl && isRemoteMedia(dataUrl)) remoteUrl = dataUrl;
+            remote = await waitForVideo(start.requestId, get, set, "Alargando el movimiento…");
           }
         } catch {
-          dataUrl = null;
+          remote = null;
         }
       }
 
-      if (!dataUrl) {
+      if (!remote) {
         if (!get().generating) return;
         set({ statusText: "Continuando desde el último fotograma…", progress: 22, error: null });
         const lastFrame = await captureLastFrame(current.dataUrl);
+        const sendResolution: VideoResolution =
+          current.resolution === "480p" || current.resolution === "720p" || current.resolution === "1080p"
+            ? current.resolution
+            : s.videoResolution;
         const fallback = await startVideo({
           data: {
             prompt,
             aspectRatio: current.aspectRatio,
             duration: add === 15 || add === 10 || add === 6 ? add : 10,
-            resolution:
-              current.resolution === "480p" || current.resolution === "720p" || current.resolution === "1080p"
-                ? current.resolution === "1080p"
-                  ? "720p"
-                  : current.resolution
-                : s.videoResolution,
+            resolution: sendResolution,
             generateAudio: s.generateAudio,
             referenceDataUrl: lastFrame,
             lastFrameDataUrl: null,
@@ -736,39 +644,42 @@ export const useStudio = create<StudioState>((set, get) => ({
         const tail = await waitForVideo(fallback.requestId, get, set, "Uniendo la continuación…");
         if (!tail) return;
         set({ statusText: "Uniendo los planos…", progress: 88 });
-        dataUrl = await concatVideoDataUrls([current.dataUrl, tail]);
+        blob = await concatVideos([current.dataUrl, tail]);
         added = add;
+        usedResolution = sendResolution;
+        usedAudio = false; // la unión local no conserva el audio
       }
 
-      if (!dataUrl) return;
       set({ statusText: "Guardando el plano…", progress: 94 });
-      if (isRemoteMedia(dataUrl)) {
-        remoteUrl = dataUrl;
-        dataUrl = await materializeMedia(dataUrl);
+      if (remote) {
+        const saved = await materializeVideo(remote);
+        blob = saved.blob;
       }
+      const id = crypto.randomUUID();
+      const dataUrl = blob ? blobUrlFor(id, blob) : (remote ?? "");
+      if (!dataUrl) return;
       const measured = await measureVideoSeconds(dataUrl);
       const item: GalleryItem = {
-        id: crypto.randomUUID(),
+        id,
         kind: "video",
         prompt: rawPrompt,
         dataUrl,
+        blob,
         aspectRatio: current.aspectRatio,
         createdAt: Date.now(),
-        resolution: current.resolution === "1080p" ? "720p" : current.resolution,
+        resolution: usedResolution,
         duration: measured || (current.duration ?? 0) + added,
         extendCount: (current.extendCount ?? 0) + 1,
-        remoteUrl,
+        audio: usedAudio,
+        remoteUrl: remote ?? undefined,
       };
       const items = await saveGalleryItem(item);
-      const spentEur = Math.round((get().spentEur + extendCost) * 100) / 100;
-      persistSpend({ ...get(), spentEur });
       set({
         current: item,
         items,
         generating: false,
         statusText: "",
         progress: 100,
-        spentEur,
       });
     } catch (err) {
       set({
@@ -782,9 +693,13 @@ export const useStudio = create<StudioState>((set, get) => ({
 
   enhance: async () => {
     const s = get();
-    if (s.enhancing || s.generating || s.prompt.trim().length < 3) return;
-    if (s.saverMode) {
-      set({ error: "En modo ahorro no se gasta IA en mejorar el prompt. Desactívalo en Límites si lo necesitas." });
+    if (s.enhancing || s.generating) return;
+    if (s.prompt.trim().length < 3) {
+      set({ error: "Escribe al menos unas palabras para poder mejorar el prompt." });
+      return;
+    }
+    if (s.available === false) {
+      set({ error: "Mejorar el prompt necesita la IA, que no está disponible ahora mismo." });
       return;
     }
     set({ enhancing: true, error: null });
@@ -795,6 +710,7 @@ export const useStudio = create<StudioState>((set, get) => ({
         return;
       }
       set({ enhancing: false, prompt: result.prompt });
+      toast("Prompt mejorado.");
     } catch {
       set({ enhancing: false, error: "No se pudo mejorar el prompt." });
     }
@@ -817,7 +733,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       atlasOpen: false,
       prompt: s.prompt.trim().length >= 3 ? s.prompt : prompt,
     });
-    if (s.available === false || s.saverMode) {
+    if (s.available === false) {
       set({ suggestingShots: false, shots: withShotIds(localShots(prompt)) });
       return;
     }
@@ -891,20 +807,20 @@ export const useStudio = create<StudioState>((set, get) => ({
     });
   },
 
-  setSpend: (patch) => {
-    const next = { ...get(), ...patch };
-    persistSpend(next);
-    set({
-      capEur: next.capEur,
-      allowVideo: next.allowVideo,
-      saverMode: next.saverMode,
-      error: null,
-      ...(patch.saverMode === true ? SAVER_CAMERA : {}),
-    });
-  },
-
-  resetSpendToday: () => {
-    persistSpend({ ...get(), spentEur: 0 });
-    set({ spentEur: 0, error: null });
+  download: async (item) => {
+    if (get().downloading) return;
+    set({ downloading: true, error: null });
+    try {
+      await downloadItem(item);
+    } catch (err) {
+      const message =
+        err instanceof DownloadError
+          ? err.message
+          : "No se pudo descargar el archivo. Inténtalo de nuevo.";
+      set({ error: message });
+      toast.error(message);
+    } finally {
+      set({ downloading: false });
+    }
   },
 }));

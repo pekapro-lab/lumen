@@ -5,10 +5,9 @@ import { join } from "node:path";
 const FILES: Record<string, { path: string; name: string; type: string }> = {
   banner: { path: "x-banner.jpg", name: "lumen-banner.jpg", type: "image/jpeg" },
   logo: { path: "lumen-logo.png", name: "lumen-logo.png", type: "image/png" },
-  svg: { path: "favicon.svg", name: "lumen-logo.svg", type: "image/svg+xml" },
+  svg: { path: "lumen-logo.svg", name: "lumen-logo.svg", type: "image/svg+xml" },
   preview: { path: "og.jpg", name: "lumen-preview.jpg", type: "image/jpeg" },
   zip: { path: "lumen-marca.zip", name: "lumen-marca.zip", type: "application/zip" },
-  proyecto: { path: "lumen-proyecto.zip", name: "lumen.zip", type: "application/zip" },
 };
 
 export const Route = createFileRoute("/api/descarga")({
