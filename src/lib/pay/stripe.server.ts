@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getRequest } from "@tanstack/react-start/server";
 import Stripe from "stripe";
-import { BRAND } from "./brand";
+import { BRAND } from "@/lib/brand";
 import { getPlan } from "./plans";
 import type { StudioPass } from "./pass";
 import {

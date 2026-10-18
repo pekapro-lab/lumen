@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { BRAND } from "./brand";
+import { BRAND } from "@/lib/brand";
 import { getPlan } from "./plans";
 import type { StudioPass } from "./pass";
 
