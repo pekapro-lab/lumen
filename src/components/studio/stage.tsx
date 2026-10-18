@@ -25,7 +25,7 @@ export function Stage() {
     setPrompt,
     animateCurrent,
     suggestShotBoard,
-    useCurrentAsReference,
+    setCurrentAsReference,
     remove,
     extendCurrent,
   } = useStudio();
@@ -134,7 +134,7 @@ export function Stage() {
               variant="secondary"
               size="sm"
               onClick={() => {
-                useCurrentAsReference();
+                setCurrentAsReference();
                 toast("Lista como referencia para la siguiente toma.");
               }}
             >
