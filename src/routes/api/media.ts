@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { BRAND } from "@/lib/brand";
 
 const ALLOWED = new Set(["vidgen.x.ai", "imgen.x.ai", "data.x.ai"]);
 
@@ -39,7 +40,7 @@ export const Route = createFileRoute("/api/media")({
         const download = new URL(request.url).searchParams.get("download");
         if (download) {
           // Descarga nativa del navegador: el cuerpo se reenvía en streaming, sin buffer.
-          const safe = download.replace(/[^\w.-]+/g, "_").slice(0, 120) || "lumen-4.0.mp4";
+          const safe = download.replace(/[^\w.-]+/g, "_").slice(0, 120) || `lumen-${BRAND.version}.mp4`;
           headers.set("content-disposition", `attachment; filename="${safe}"`);
           headers.set("cache-control", "no-store");
         }

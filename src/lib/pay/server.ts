@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { BRAND } from "./brand";
 import { getPlan } from "./plans";
 import type { StudioPass } from "./pass";
 
@@ -55,7 +56,7 @@ export const startCheckout = createServerFn({ method: "POST" })
               currency: "eur",
               unit_amount: Math.round(plan.euros * 100),
               product_data: {
-                name: `Lumen 4.0 · ${plan.name}`,
+                name: `${BRAND.name} · ${plan.name}`,
                 description: plan.blurb,
               },
             },

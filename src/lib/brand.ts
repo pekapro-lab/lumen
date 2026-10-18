@@ -1,7 +1,7 @@
 export const BRAND = {
-  name: "Lumen 4.0",
+  name: "Lumen 5.0",
   product: "Lumen",
-  version: "4.0",
+  version: "5.0",
   credit: "Hecho por PekaPro",
   description:
     "Estudio de imagen y vídeo por IA: calidad, resolución, duración y sonido a tu medida.",

@@ -6,6 +6,7 @@ import type {
   ImageResolution,
   VideoResolution,
 } from "./imagine/types.ts";
+import { BRAND } from "./brand.ts";
 
 const IMAGE_QUALITY_LABEL: Record<ImageQuality, string> = {
   fast: "Rápida",
@@ -85,5 +86,5 @@ export function downloadName(
 ): string {
   const stamp = new Date(item.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const res = item.resolution ? `-${item.resolution}` : "";
-  return `lumen-4.0${res}-${stamp}.${extensionForMime(mime, item.kind)}`;
+  return `lumen-${BRAND.version}${res}-${stamp}.${extensionForMime(mime, item.kind)}`;
 }

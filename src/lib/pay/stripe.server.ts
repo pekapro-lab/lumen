@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getRequest } from "@tanstack/react-start/server";
 import Stripe from "stripe";
+import { BRAND } from "./brand";
 import { getPlan } from "./plans";
 import type { StudioPass } from "./pass";
 import {
@@ -182,7 +183,7 @@ export async function ensureWebhookEndpoint(): Promise<{
       const created = await stripe.webhookEndpoints.create({
         url,
         enabled_events: [...WEBHOOK_EVENTS],
-        description: "Lumen 4.0 pases",
+        description: `${BRAND.name} pases`,
       });
       await saveStripeConfig({
         webhookEndpointId: created.id,

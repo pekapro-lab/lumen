@@ -6,7 +6,7 @@ export function BrandLockup({ className }: { className?: string }) {
     <div className={cn("flex min-w-0 items-center gap-3", className)}>
       <img
         src="/lumen-mark.jpg"
-        alt="Lumen 4.0"
+        alt={BRAND.name}
         width={40}
         height={40}
         className="size-10 shrink-0 object-cover shadow-[var(--shadow-border)]"

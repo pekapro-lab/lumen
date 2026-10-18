@@ -1,12 +1,13 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/brand";
 
 const FILES = [
-  { href: "/api/descarga?f=zip", name: "lumen-marca.zip", label: "Marca Lumen 4.0 (ZIP)" },
-  { href: "/api/descarga?f=banner", name: "lumen-banner.jpg", label: "Banner de X · Lumen 4.0" },
-  { href: "/api/descarga?f=logo", name: "lumen-logo.png", label: "Logo PNG · Lumen 4.0" },
-  { href: "/api/descarga?f=svg", name: "lumen-logo.svg", label: "Logo SVG · Lumen 4.0" },
+  { href: "/api/descarga?f=zip", name: "lumen-marca.zip", label: `Marca ${BRAND.name} (ZIP)` },
+  { href: "/api/descarga?f=banner", name: "lumen-banner.jpg", label: `Banner de X · ${BRAND.name}` },
+  { href: "/api/descarga?f=logo", name: "lumen-logo.png", label: `Logo PNG · ${BRAND.name}` },
+  { href: "/api/descarga?f=svg", name: "lumen-logo.svg", label: `Logo SVG · ${BRAND.name}` },
   { href: "/api/descarga?f=preview", name: "lumen-preview.jpg", label: "Tarjeta de enlace" },
 ] as const;
 

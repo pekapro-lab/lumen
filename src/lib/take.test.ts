@@ -54,13 +54,13 @@ test("etiqueta de una toma generada", () => {
   assert.equal(itemTakeLabel({ kind: "video" }), null);
 });
 
-test("nombre de archivo de descarga: lumen-4.0 y extensión real", () => {
+test("nombre de archivo de descarga: lumen-5.0 y extensión real", () => {
   const item = { kind: "video" as const, resolution: "1080p" as const, createdAt: Date.UTC(2026, 9, 16, 10, 30, 5) };
-  assert.equal(downloadName(item, "video/mp4"), "lumen-4.0-1080p-2026-10-16-10-30-05.mp4");
-  assert.equal(downloadName(item, "video/webm;codecs=vp9"), "lumen-4.0-1080p-2026-10-16-10-30-05.webm");
+  assert.equal(downloadName(item, "video/mp4"), "lumen-5.0-1080p-2026-10-16-10-30-05.mp4");
+  assert.equal(downloadName(item, "video/webm;codecs=vp9"), "lumen-5.0-1080p-2026-10-16-10-30-05.webm");
   assert.equal(
     downloadName({ kind: "image", resolution: "2k", createdAt: 0 }, "image/png"),
-    "lumen-4.0-2k-1970-01-01-00-00-00.png",
+    "lumen-5.0-2k-1970-01-01-00-00-00.png",
   );
   assert.equal(extensionForMime("", "video"), "mp4");
   assert.equal(extensionForMime("application/octet-stream", "image"), "jpg");
