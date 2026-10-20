@@ -219,7 +219,7 @@ type StudioState = {
   suggestShotBoard: (seed?: string) => Promise<void>;
   applyShot: (shot: ShotSuggestion, immediately?: boolean) => void;
   applyVideoPrompt: (card: import("@/lib/imagine/video-prompts").VideoPromptCard) => void;
-  useCurrentAsReference: () => void;
+  setCurrentAsReference: () => void;
   remove: (id: string) => Promise<void>;
   animateCurrent: () => void;
   extendCurrent: () => Promise<void>;
@@ -776,7 +776,7 @@ export const useStudio = create<StudioState>((set, get) => ({
     });
   },
 
-  useCurrentAsReference: () => {
+  setCurrentAsReference: () => {
     const current = get().current;
     if (!current || current.kind !== "image") return;
     set({
