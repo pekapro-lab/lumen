@@ -145,7 +145,11 @@ function authPopupPlugin(): Plugin {
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
+// GitHub Pages: static SPA build under /<repo>/ (set GH_PAGES_BASE in CI).
+const ghPagesBase = process.env.GH_PAGES_BASE;
+
 export default defineConfig(({ command, isPreview }) => ({
+  ...(ghPagesBase ? { base: ghPagesBase } : {}),
   server: {
     host: "0.0.0.0",
     port: 8080,
@@ -166,7 +170,12 @@ export default defineConfig(({ command, isPreview }) => ({
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
     tailwindcss(),
-    tanstackStart(),
+    ghPagesBase
+      ? tanstackStart({
+          spa: { enabled: true, prerender: { outputPath: "/index.html" } },
+          router: { basepath: ghPagesBase },
+        })
+      : tanstackStart(),
     ...(command === "build" || isPreview
       ? [
           nitro({
@@ -174,7 +183,7 @@ export default defineConfig(({ command, isPreview }) => ({
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
-            serverDir: "./server",
+            serverDir: ghPagesBase ? false : "./server",
           }),
         ]
       : []),

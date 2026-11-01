@@ -5,7 +5,7 @@ export function BrandLockup({ className }: { className?: string }) {
   return (
     <div className={cn("flex min-w-0 items-center gap-3", className)}>
       <img
-        src="/lumen-mark.jpg"
+        src={`${import.meta.env.BASE_URL}lumen-mark.jpg`}
         alt={BRAND.name}
         width={40}
         height={40}
